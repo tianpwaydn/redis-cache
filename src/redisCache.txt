@@ -1,0 +1,101 @@
+﻿<dependency>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-data-redis</artifactId>
+	<exclusions>
+		<exclusion>
+			<groupId>io.lettuce</groupId>
+			<artifactId>lettuce-core</artifactId>
+		</exclusion>
+	</exclusions>
+</dependency>
+<dependency>
+	<groupId>redis.clients</groupId>
+	<artifactId>jedis</artifactId>
+</dependency>
+
+1. 添加redis缓存配置
+redis配置
+  redis:
+    jedis:
+      pool:
+        min-idle: 5
+        max-active: 8
+        max-idle: 8
+        max-wait: 3000
+    port: 6379
+    host: localhost
+    password:
+    timeout: 3000
+ 
+redis缓存配置
+  cache:
+    cache-names: redisCache
+    redis:
+      cache-null-values: false
+      key-prefix:
+      time-to-live:
+      use-key-prefix: true
+    type: redis
+
+2. 启动类上添加@EnableCaching
+
+3.类需要实现序列化接口
+
+4.修改redis序列化器 在启动类中添加初始化操作
+@PostConstruct
+public void init() {
+	initRedisTemplate();
+}
+
+public void initRedisTemplate() {
+	RedisSerializer stringSerializer = redisTemplate.getStringSerializer();
+	redisTemplate.setKeySerializer(stringSerializer);
+	redisTemplate.setHashKeySerializer(stringSerializer);
+
+}
+
+5.查询,更新,和删除
+@RestController
+@RequestMapping("/user")
+public class UserController {
+    @Autowired
+    private UserService userService;
+
+    @RequestMapping("/selectAll")
+    public List<User> selectAll() {
+        return userService.selectAll();
+    }
+
+    /**
+     * condition和unless的区别，condition对传入值生效，unless对结果result生效
+     * @param userId
+     * @return
+     */
+
+    @RequestMapping("/selectByUserId")  // unless = "#result == null" 结果为空则不缓存
+    @Cacheable(value = "redisCache", unless = "#result == null", key = "'user_id' + #userId")
+    public User selectByUserId(Integer userId){
+        return userService.selectByUserId(userId);
+    }
+
+    @RequestMapping("/updateByUserId") // 更新 结果为空不缓存
+    @CachePut(value = "redisCache", condition = "#result != null",key = "'user_id' + #result.userId")
+    public User updateByUserId(User user) {
+        return userService.updateByUserId(user);
+    }
+
+    @RequestMapping("/deleteByUserId") // 结果为空不缓存
+    @CacheEvict(value = "redisCache", condition = "#result != null", key = "'user_id' + #userId")
+    public String deleteByUserId(Integer userId) {
+        return userService.deleteById(userId);
+    }
+
+}
+
+4. 存储字符串指定时间值
+redisTemplate.opsForValue().set("tian","personal 自定义字符串",10, TimeUnit.SECONDS);
+TimeUnit.DAYS          //天
+TimeUnit.HOURS         //小时
+TimeUnit.MINUTES       //分钟
+TimeUnit.SECONDS       //秒
+TimeUnit.MILLISECONDS  //毫秒
